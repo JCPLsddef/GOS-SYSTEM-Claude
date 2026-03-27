@@ -1,5 +1,6 @@
 import { Sidebar } from '@/components/layout/Sidebar'
 import { TopBar } from '@/components/layout/TopBar'
+import { ErrorBoundary } from '@/components/ui/ErrorBoundary'
 
 export default function AuthenticatedLayout({
   children,
@@ -8,10 +9,18 @@ export default function AuthenticatedLayout({
 }) {
   return (
     <div className="min-h-screen">
-      <Sidebar />
+      <ErrorBoundary>
+        <Sidebar />
+      </ErrorBoundary>
       <div className="md:ml-64">
-        <TopBar />
-        <main className="p-6 pb-24 md:pb-6">{children}</main>
+        <ErrorBoundary>
+          <TopBar />
+        </ErrorBoundary>
+        <main className="p-6 pb-24 md:pb-6">
+          <ErrorBoundary>
+            {children}
+          </ErrorBoundary>
+        </main>
       </div>
     </div>
   )

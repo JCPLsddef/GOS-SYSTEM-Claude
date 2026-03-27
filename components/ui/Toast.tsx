@@ -38,11 +38,16 @@ export function toast(message: string, type: Toast['type'] = 'info', duration = 
   useToastStore.getState().addToast({ type, message, duration })
 }
 
-function ToastItem({ toast: t, onRemove }: { toast: Toast; onRemove: () => void }) {
+function ToastItem({ toast: t }: { toast: Toast }) {
+  // Use getState() so this effect never needs onRemove in its deps,
+  // preventing timer resets on every parent re-render
   useEffect(() => {
-    const timer = setTimeout(onRemove, t.duration || 4000)
+    const timer = setTimeout(
+      () => useToastStore.getState().removeToast(t.id),
+      t.duration || 4000
+    )
     return () => clearTimeout(timer)
-  }, [t.duration, onRemove])
+  }, [t.id, t.duration])
 
   const icons = {
     success: <CheckCircle2 className="w-5 h-5 text-front-business" />,
@@ -70,7 +75,7 @@ function ToastItem({ toast: t, onRemove }: { toast: Toast; onRemove: () => void 
     >
       {icons[t.type]}
       <span className="text-sm text-cream flex-1">{t.message}</span>
-      <button onClick={onRemove} className="text-cream-muted hover:text-cream">
+      <button onClick={() => useToastStore.getState().removeToast(t.id)} className="text-cream-muted hover:text-cream">
         <X className="w-4 h-4" />
       </button>
     </motion.div>
@@ -78,13 +83,13 @@ function ToastItem({ toast: t, onRemove }: { toast: Toast; onRemove: () => void 
 }
 
 export function ToastContainer() {
-  const { toasts, removeToast } = useToastStore()
+  const { toasts } = useToastStore()
 
   return (
     <div className="fixed bottom-4 right-4 z-[100] flex flex-col gap-2">
       <AnimatePresence>
         {toasts.map((t) => (
-          <ToastItem key={t.id} toast={t} onRemove={() => removeToast(t.id)} />
+          <ToastItem key={t.id} toast={t} />
         ))}
       </AnimatePresence>
     </div>

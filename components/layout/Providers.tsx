@@ -7,22 +7,20 @@ import { ToastContainer, toast } from '@/components/ui/Toast'
 
 function DataLoader({ children }: { children: React.ReactNode }) {
   const { status } = useSession()
-  const { fetchAll, seedData, isSeeded } = useGosStore()
   const initialized = useRef(false)
 
   useEffect(() => {
-    if (status === 'authenticated' && !initialized.current) {
-      initialized.current = true
+    if (status !== 'authenticated' || initialized.current) return
+    initialized.current = true
 
-      // Seed data if first login, then fetch all
-      seedData().then(() => {
-        fetchAll()
-        if (!isSeeded) {
-          toast('Welcome back, Juan.', 'hype')
-        }
-      })
-    }
-  }, [status, fetchAll, seedData, isSeeded])
+    // Use getState() to avoid subscribing DataLoader to the entire store
+    // seedData() seeds if fresh, then fetchAll() ensures data is always loaded
+    const { seedData, fetchAll } = useGosStore.getState()
+    seedData().then(() => {
+      fetchAll()
+      toast('Welcome back, Juan.', 'hype')
+    })
+  }, [status])
 
   return <>{children}</>
 }

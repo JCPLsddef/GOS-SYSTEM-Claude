@@ -15,9 +15,9 @@ export function TopBar() {
 
   return (
     <header className="h-16 bg-bg-surface/80 backdrop-blur-sm border-b border-cream-muted/10 flex items-center justify-between px-6 sticky top-0 z-30">
-      {/* Left: Date */}
+      {/* Left: Date — suppressHydrationWarning: server (UTC) vs client (local) timezone differ */}
       <div>
-        <p className="text-sm text-cream-muted">{dateStr}</p>
+        <p className="text-sm text-cream-muted" suppressHydrationWarning>{dateStr}</p>
       </div>
 
       {/* Right: Streak + actions */}

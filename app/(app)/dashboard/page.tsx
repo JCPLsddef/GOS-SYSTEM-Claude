@@ -6,16 +6,23 @@ import { Badge, getFrontBadgeVariant } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 import { ProgressRing } from '@/components/ui/ProgressRing'
 import { toast } from '@/components/ui/Toast'
-import { formatDate, isOverdue } from '@/lib/utils'
+import { formatDate, isOverdue, isToday } from '@/lib/utils'
 import { CheckCircle2, Clock, Zap, AlertTriangle } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 
 export default function DashboardPage() {
   const { missions, fronts, currentStreak, completeMission, getFrontProgress, isLoading } = useGosStore()
 
-  const todayMissions = useGosStore(s => s.getTodayMissions())
-  const allActiveMissions = missions.filter(m => !m.completed).sort((a, b) => a.priority - b.priority)
+  // useMemo prevents creating a new array reference on every render (avoids Zustand infinite re-render)
+  const todayMissions = useMemo(
+    () => missions.filter(m => !m.completed && isToday(m.attackDate)),
+    [missions]
+  )
+  const allActiveMissions = useMemo(
+    () => missions.filter(m => !m.completed).sort((a, b) => a.priority - b.priority),
+    [missions]
+  )
   const heroMission = todayMissions[0] || allActiveMissions[0]
   const secondaryMissions = (todayMissions.length > 0 ? todayMissions.slice(1) : allActiveMissions.slice(1)).slice(0, 5)
 
@@ -49,7 +56,8 @@ export default function DashboardPage() {
     <div className="max-w-5xl mx-auto space-y-6">
       {/* Greeting */}
       <div>
-        <h1 className="font-display text-3xl font-bold text-cream">
+        {/* suppressHydrationWarning: server renders UTC hour, client renders local hour */}
+        <h1 className="font-display text-3xl font-bold text-cream" suppressHydrationWarning>
           Good {getTimeOfDay()}, Juan.
         </h1>
         <p className="text-cream-muted mt-1">

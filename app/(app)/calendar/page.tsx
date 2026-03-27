@@ -11,12 +11,28 @@ const HOURS = Array.from({ length: 18 }, (_, i) => i + 6) // 6:00 - 23:00
 
 export default function CalendarPage() {
   const { missions, calendarEvents, fetchCalendarEvents, syncToCalendar, lastSyncedAt } = useGosStore()
-  const [weekStart, setWeekStart] = useState(() => startOfWeek(new Date(), { weekStartsOn: 1 }))
+  // null initial state avoids SSR/client timezone hydration mismatch
+  const [weekStart, setWeekStart] = useState<Date | null>(null)
   const [syncing, setSyncing] = useState(false)
 
+  // Set weekStart only on client to avoid hydration mismatch from new Date() timezone differences
   useEffect(() => {
+    setWeekStart(startOfWeek(new Date(), { weekStartsOn: 1 }))
+  }, [])
+
+  useEffect(() => {
+    if (!weekStart) return
     fetchCalendarEvents(weekStart.toISOString())
   }, [weekStart, fetchCalendarEvents])
+
+  // Guard: show loading until client has initialised weekStart
+  if (!weekStart) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="text-cream-muted animate-pulse font-display text-lg">Loading calendar...</div>
+      </div>
+    )
+  }
 
   const weekEnd = endOfWeek(weekStart, { weekStartsOn: 1 })
   const days = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i))
@@ -33,7 +49,7 @@ export default function CalendarPage() {
     setSyncing(false)
     if (result) {
       toast(`Synced: ${result.created} created, ${result.updated} updated`, 'success')
-      fetchCalendarEvents(weekStart.toISOString())
+      fetchCalendarEvents(weekStart!.toISOString())
     } else {
       toast('Sync failed. Check your Google connection.', 'error')
     }
@@ -59,7 +75,7 @@ export default function CalendarPage() {
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
           <button
-            onClick={() => setWeekStart(addWeeks(weekStart, -1))}
+            onClick={() => setWeekStart(addWeeks(weekStart!, -1))}
             className="p-2 rounded-lg text-cream-muted hover:text-cream hover:bg-bg-elevated"
           >
             <ChevronLeft className="w-5 h-5" />
@@ -68,7 +84,7 @@ export default function CalendarPage() {
             {format(weekStart, 'MMM d')} – {format(weekEnd, 'MMM d, yyyy')}
           </h2>
           <button
-            onClick={() => setWeekStart(addWeeks(weekStart, 1))}
+            onClick={() => setWeekStart(addWeeks(weekStart!, 1))}
             className="p-2 rounded-lg text-cream-muted hover:text-cream hover:bg-bg-elevated"
           >
             <ChevronRight className="w-5 h-5" />
