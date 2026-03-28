@@ -28,11 +28,28 @@ export function Badge({ className, variant = 'default', children, ...props }: Ba
   )
 }
 
-export function getFrontBadgeVariant(frontId: string): BadgeProps['variant'] {
+// Accept both front type string ('business') and look up from fronts array
+export function getFrontBadgeVariant(frontTypeOrId: string): BadgeProps['variant'] {
   const map: Record<string, BadgeProps['variant']> = {
     business: 'business',
     school: 'school',
     health: 'health',
   }
-  return map[frontId] || 'default'
+  return map[frontTypeOrId] || 'default'
+}
+
+// Color badge for any front (uses inline style)
+export function FrontBadge({ name, color, className }: { name: string; color: string; className?: string }) {
+  return (
+    <span
+      className={cn('inline-flex items-center px-2 py-0.5 rounded-md text-xs font-mono border', className)}
+      style={{
+        backgroundColor: `${color}15`,
+        color: color,
+        borderColor: `${color}30`,
+      }}
+    >
+      {name}
+    </span>
+  )
 }
