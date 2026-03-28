@@ -18,6 +18,29 @@ export const authOptions: NextAuthOptions = {
     }),
   ],
   callbacks: {
+    async signIn({ user, account }) {
+      if (account?.provider === 'google') {
+        try {
+          const { createClient } = await import('@supabase/supabase-js')
+          const supabase = createClient(
+            process.env.NEXT_PUBLIC_SUPABASE_URL!,
+            process.env.SUPABASE_SERVICE_ROLE_KEY!
+          )
+          await supabase.from('users').upsert(
+            {
+              google_id: user.id!,
+              email: user.email!,
+              name: user.name,
+              avatar_url: user.image,
+            },
+            { onConflict: 'google_id' }
+          )
+        } catch (err) {
+          console.error('Error upserting user in signIn callback:', err)
+        }
+      }
+      return true
+    },
     async jwt({ token, account }) {
       // On initial sign in, persist OAuth tokens + upsert user in Supabase
       if (account) {

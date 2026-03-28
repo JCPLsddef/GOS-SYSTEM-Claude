@@ -1,16 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth'
 import { supabaseAdmin } from '@/lib/supabase'
+import { getAuthenticatedUserId } from '@/lib/get-user'
 
 // GET — return all mantras + today's mantra
 export async function GET() {
-  const session = await getServerSession(authOptions)
-  if (!session?.dbUserId) {
+  const { userId } = await getAuthenticatedUserId()
+  if (!userId) {
     return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 })
   }
-
-  const userId = session.dbUserId
 
   const { data: allMantras } = await supabaseAdmin
     .from('mantras')
@@ -42,8 +39,8 @@ export async function GET() {
 
 // POST — add a new mantra
 export async function POST(req: NextRequest) {
-  const session = await getServerSession(authOptions)
-  if (!session?.dbUserId) {
+  const { userId } = await getAuthenticatedUserId()
+  if (!userId) {
     return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 })
   }
 
@@ -56,7 +53,7 @@ export async function POST(req: NextRequest) {
 
   const { data: newMantra, error } = await supabaseAdmin
     .from('mantras')
-    .insert({ user_id: session.dbUserId, text, type })
+    .insert({ user_id: userId, text, type })
     .select()
     .single()
 
@@ -69,8 +66,8 @@ export async function POST(req: NextRequest) {
 
 // DELETE — remove a mantra by id
 export async function DELETE(req: NextRequest) {
-  const session = await getServerSession(authOptions)
-  if (!session?.dbUserId) {
+  const { userId } = await getAuthenticatedUserId()
+  if (!userId) {
     return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 })
   }
 
@@ -85,7 +82,7 @@ export async function DELETE(req: NextRequest) {
     .from('mantras')
     .delete()
     .eq('id', id)
-    .eq('user_id', session.dbUserId)
+    .eq('user_id', userId)
 
   return NextResponse.json({ success: true })
 }

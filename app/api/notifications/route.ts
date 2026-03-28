@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth'
 import { supabaseAdmin } from '@/lib/supabase'
+import { getAuthenticatedUserId } from '@/lib/get-user'
 
 function mapRule(r: Record<string, unknown>) {
   return {
@@ -16,23 +15,23 @@ function mapRule(r: Record<string, unknown>) {
 }
 
 export async function GET() {
-  const session = await getServerSession(authOptions)
-  if (!session?.dbUserId) {
+  const { userId } = await getAuthenticatedUserId()
+  if (!userId) {
     return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 })
   }
 
   const { data } = await supabaseAdmin
     .from('notification_rules')
     .select('*')
-    .eq('user_id', session.dbUserId)
+    .eq('user_id', userId)
     .order('created_at')
 
   return NextResponse.json({ success: true, data: (data || []).map(mapRule) })
 }
 
 export async function POST(request: NextRequest) {
-  const session = await getServerSession(authOptions)
-  if (!session?.dbUserId) {
+  const { userId } = await getAuthenticatedUserId()
+  if (!userId) {
     return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 })
   }
 
@@ -42,7 +41,7 @@ export async function POST(request: NextRequest) {
   const { data, error } = await supabaseAdmin
     .from('notification_rules')
     .insert({
-      user_id: session.dbUserId,
+      user_id: userId,
       type,
       message,
       trigger_time,
@@ -60,8 +59,8 @@ export async function POST(request: NextRequest) {
 }
 
 export async function PATCH(request: NextRequest) {
-  const session = await getServerSession(authOptions)
-  if (!session?.dbUserId) {
+  const { userId } = await getAuthenticatedUserId()
+  if (!userId) {
     return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 })
   }
 
@@ -81,7 +80,7 @@ export async function PATCH(request: NextRequest) {
     .from('notification_rules')
     .update(updateData)
     .eq('id', ruleId)
-    .eq('user_id', session.dbUserId)
+    .eq('user_id', userId)
     .select()
     .single()
 

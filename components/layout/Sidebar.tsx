@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import Image from 'next/image'
 import { usePathname } from 'next/navigation'
-import { useSession } from 'next-auth/react'
+import { useSession, signOut } from 'next-auth/react'
 import {
   LayoutDashboard,
   CalendarRange,
@@ -15,10 +15,11 @@ import {
   Pin,
   PinOff,
   Flame,
+  LogOut,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useGosStore, getLevel } from '@/store/gos-store'
-import { useState } from 'react'
+import { useState, useRef, useEffect } from 'react'
 
 const navItems = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
@@ -36,9 +37,24 @@ export function Sidebar() {
   const { currentStreak, totalXp } = useGosStore()
   const [pinned, setPinned] = useState(false)
   const [hovered, setHovered] = useState(false)
+  const [menuOpen, setMenuOpen] = useState(false)
+  const menuRef = useRef<HTMLDivElement>(null)
 
   const expanded = pinned || hovered
   const level = getLevel(totalXp)
+
+  // Close menu on click outside
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setMenuOpen(false)
+      }
+    }
+    if (menuOpen) {
+      document.addEventListener('mousedown', handleClickOutside)
+      return () => document.removeEventListener('mousedown', handleClickOutside)
+    }
+  }, [menuOpen])
 
   return (
     <>
@@ -119,12 +135,21 @@ export function Sidebar() {
           )}
         </div>
 
-        {/* User avatar + name */}
-        <div className={cn(
-          'border-t border-cream-muted/10 py-3',
-          expanded ? 'px-4' : 'flex justify-center'
-        )}>
-          <div className={cn('flex items-center gap-3', !expanded && 'justify-center')}>
+        {/* User avatar + menu */}
+        <div
+          ref={menuRef}
+          className={cn(
+            'border-t border-cream-muted/10 py-3 relative',
+            expanded ? 'px-4' : 'flex justify-center'
+          )}
+        >
+          <button
+            onClick={() => setMenuOpen(!menuOpen)}
+            className={cn(
+              'flex items-center gap-3 w-full rounded-lg transition-colors hover:bg-bg-elevated p-1.5',
+              !expanded && 'justify-center'
+            )}
+          >
             {session?.user?.image ? (
               <Image
                 src={session.user.image}
@@ -135,15 +160,37 @@ export function Sidebar() {
               />
             ) : (
               <div className="w-8 h-8 rounded-full bg-gold/20 flex items-center justify-center flex-shrink-0">
-                <span className="text-xs font-mono text-gold">J</span>
+                <span className="text-xs font-mono text-gold">
+                  {(session?.user?.name || 'J')[0].toUpperCase()}
+                </span>
               </div>
             )}
             {expanded && (
-              <div className="min-w-0">
-                <p className="text-sm text-cream truncate">{session?.user?.name || 'Juan'}</p>
+              <div className="min-w-0 text-left">
+                <p className="text-sm text-cream truncate">{session?.user?.name || 'User'}</p>
               </div>
             )}
-          </div>
+          </button>
+
+          {/* Dropdown menu */}
+          {menuOpen && (
+            <div className={cn(
+              'absolute bg-bg-elevated border border-cream-muted/10 rounded-lg shadow-xl z-50 py-2 min-w-[200px]',
+              expanded ? 'bottom-full left-4 mb-2' : 'bottom-full left-14 mb-2'
+            )}>
+              <div className="px-3 py-2 border-b border-cream-muted/10">
+                <p className="text-sm font-display text-cream truncate">{session?.user?.name || 'User'}</p>
+                <p className="text-xs text-cream-muted truncate">{session?.user?.email || ''}</p>
+              </div>
+              <button
+                onClick={() => signOut({ callbackUrl: '/' })}
+                className="flex items-center gap-2 w-full px-3 py-2 text-sm text-cream-muted hover:text-red-400 hover:bg-red-400/10 transition-colors"
+              >
+                <LogOut className="w-4 h-4" />
+                Sign out
+              </button>
+            </div>
+          )}
         </div>
       </aside>
 

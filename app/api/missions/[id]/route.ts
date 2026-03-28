@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth'
 import { supabaseAdmin } from '@/lib/supabase'
+import { getAuthenticatedUserId } from '@/lib/get-user'
 
 function mapMission(m: Record<string, unknown>) {
   return {
@@ -27,8 +26,8 @@ export async function GET(
   _request: NextRequest,
   { params }: { params: { id: string } }
 ) {
-  const session = await getServerSession(authOptions)
-  if (!session?.dbUserId) {
+  const { userId } = await getAuthenticatedUserId()
+  if (!userId) {
     return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 })
   }
 
@@ -36,7 +35,7 @@ export async function GET(
     .from('missions')
     .select('*')
     .eq('id', params.id)
-    .eq('user_id', session.dbUserId)
+    .eq('user_id', userId)
     .single()
 
   if (!mission) {
@@ -50,8 +49,8 @@ export async function PATCH(
   request: NextRequest,
   { params }: { params: { id: string } }
 ) {
-  const session = await getServerSession(authOptions)
-  if (!session?.dbUserId) {
+  const { userId } = await getAuthenticatedUserId()
+  if (!userId) {
     return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 })
   }
 
@@ -79,7 +78,7 @@ export async function PATCH(
     .from('missions')
     .update(updateData)
     .eq('id', params.id)
-    .eq('user_id', session.dbUserId)
+    .eq('user_id', userId)
     .select()
     .single()
 
@@ -94,8 +93,8 @@ export async function DELETE(
   _request: NextRequest,
   { params }: { params: { id: string } }
 ) {
-  const session = await getServerSession(authOptions)
-  if (!session?.dbUserId) {
+  const { userId } = await getAuthenticatedUserId()
+  if (!userId) {
     return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 })
   }
 
@@ -103,7 +102,7 @@ export async function DELETE(
     .from('missions')
     .delete()
     .eq('id', params.id)
-    .eq('user_id', session.dbUserId)
+    .eq('user_id', userId)
 
   if (error) {
     return NextResponse.json({ success: false, error: 'Mission not found' }, { status: 404 })

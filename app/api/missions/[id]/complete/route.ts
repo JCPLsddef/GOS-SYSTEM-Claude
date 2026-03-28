@@ -1,18 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth'
 import { supabaseAdmin } from '@/lib/supabase'
+import { getAuthenticatedUserId } from '@/lib/get-user'
 
 export async function POST(
   _request: NextRequest,
   { params }: { params: { id: string } }
 ) {
-  const session = await getServerSession(authOptions)
-  if (!session?.dbUserId) {
+  const { userId } = await getAuthenticatedUserId()
+  if (!userId) {
     return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 })
   }
-
-  const userId = session.dbUserId
 
   // Get the mission
   const { data: mission } = await supabaseAdmin
@@ -40,7 +37,6 @@ export async function POST(
   // Check if checkpoint is now complete
   let checkpointCompleted = false
   if (mission.checkpoint_id) {
-    // Check all missions in this checkpoint (including the one we just completed)
     const { data: cpMissionsUpdated } = await supabaseAdmin
       .from('missions')
       .select('completed')

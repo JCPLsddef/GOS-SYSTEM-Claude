@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth'
 import { supabaseAdmin } from '@/lib/supabase'
+import { getAuthenticatedUserId } from '@/lib/get-user'
 
 function mapMission(m: Record<string, unknown>) {
   return {
@@ -24,23 +23,23 @@ function mapMission(m: Record<string, unknown>) {
 }
 
 export async function GET() {
-  const session = await getServerSession(authOptions)
-  if (!session?.dbUserId) {
+  const { userId } = await getAuthenticatedUserId()
+  if (!userId) {
     return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 })
   }
 
   const { data } = await supabaseAdmin
     .from('missions')
     .select('*')
-    .eq('user_id', session.dbUserId)
+    .eq('user_id', userId)
     .order('stone_position')
 
   return NextResponse.json({ success: true, data: (data || []).map(mapMission) })
 }
 
 export async function POST(request: NextRequest) {
-  const session = await getServerSession(authOptions)
-  if (!session?.dbUserId) {
+  const { userId } = await getAuthenticatedUserId()
+  if (!userId) {
     return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 })
   }
 
@@ -50,7 +49,7 @@ export async function POST(request: NextRequest) {
   const { data: maxRow } = await supabaseAdmin
     .from('missions')
     .select('stone_position')
-    .eq('user_id', session.dbUserId)
+    .eq('user_id', userId)
     .order('stone_position', { ascending: false })
     .limit(1)
 
@@ -61,7 +60,7 @@ export async function POST(request: NextRequest) {
     .insert({
       front_id: body.frontId,
       checkpoint_id: body.checkpointId,
-      user_id: session.dbUserId,
+      user_id: userId,
       name: body.name,
       definition_of_done: body.definitionOfDone || '',
       priority: body.priority || 2,

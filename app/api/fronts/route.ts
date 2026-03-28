@@ -1,22 +1,21 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth'
 import { supabaseAdmin } from '@/lib/supabase'
 import { buildFronts } from '@/lib/queries'
+import { getAuthenticatedUserId } from '@/lib/get-user'
 
 export async function GET() {
-  const session = await getServerSession(authOptions)
-  if (!session?.dbUserId) {
+  const { userId } = await getAuthenticatedUserId()
+  if (!userId) {
     return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 })
   }
 
-  const fronts = await buildFronts(session.dbUserId)
+  const fronts = await buildFronts(userId)
   return NextResponse.json({ success: true, data: fronts })
 }
 
 export async function POST(request: NextRequest) {
-  const session = await getServerSession(authOptions)
-  if (!session?.dbUserId) {
+  const { userId } = await getAuthenticatedUserId()
+  if (!userId) {
     return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 })
   }
 
@@ -30,7 +29,7 @@ export async function POST(request: NextRequest) {
   const { data: front, error } = await supabaseAdmin
     .from('fronts')
     .insert({
-      user_id: session.dbUserId,
+      user_id: userId,
       name,
       type,
       color: color || '#D4A853',
@@ -50,8 +49,8 @@ export async function POST(request: NextRequest) {
 }
 
 export async function PATCH(request: NextRequest) {
-  const session = await getServerSession(authOptions)
-  if (!session?.dbUserId) {
+  const { userId } = await getAuthenticatedUserId()
+  if (!userId) {
     return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 })
   }
 
@@ -72,9 +71,9 @@ export async function PATCH(request: NextRequest) {
     if (target.achieved !== undefined) updateData.target_achieved = target.achieved
   }
 
-  await supabaseAdmin.from('fronts').update(updateData).eq('id', frontId).eq('user_id', session.dbUserId)
+  await supabaseAdmin.from('fronts').update(updateData).eq('id', frontId).eq('user_id', userId)
 
-  const fronts = await buildFronts(session.dbUserId)
+  const fronts = await buildFronts(userId)
   const updated = fronts.find(f => f.id === frontId)
   return NextResponse.json({ success: true, data: updated })
 }
