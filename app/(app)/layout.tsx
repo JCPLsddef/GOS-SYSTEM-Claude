@@ -12,7 +12,7 @@ export default function AuthenticatedLayout({
       <ErrorBoundary>
         <Sidebar />
       </ErrorBoundary>
-      <div className="md:ml-64">
+      <div className="md:ml-[60px]">
         <ErrorBoundary>
           <TopBar />
         </ErrorBoundary>

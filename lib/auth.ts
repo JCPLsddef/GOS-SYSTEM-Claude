@@ -1,5 +1,6 @@
 import { NextAuthOptions } from 'next-auth'
 import GoogleProvider from 'next-auth/providers/google'
+import { supabaseAdmin } from '@/lib/supabase'
 
 export const authOptions: NextAuthOptions = {
   providers: [
@@ -18,12 +19,50 @@ export const authOptions: NextAuthOptions = {
   ],
   callbacks: {
     async jwt({ token, account }) {
-      // On initial sign in, persist OAuth tokens
+      // On initial sign in, persist OAuth tokens + upsert user in Supabase
       if (account) {
         token.accessToken = account.access_token
         token.refreshToken = account.refresh_token
         token.expiresAt = account.expires_at
         token.userId = token.sub
+
+        // Upsert user in Supabase
+        try {
+          const { data: existingUser } = await supabaseAdmin
+            .from('users')
+            .select('id')
+            .eq('google_id', token.sub!)
+            .single()
+
+          if (existingUser) {
+            // Update last active
+            await supabaseAdmin
+              .from('users')
+              .update({
+                last_active: new Date().toISOString().split('T')[0],
+                name: token.name || undefined,
+                avatar_url: token.picture || undefined,
+              })
+              .eq('id', existingUser.id)
+            token.dbUserId = existingUser.id
+          } else {
+            // Insert new user
+            const { data: newUser } = await supabaseAdmin
+              .from('users')
+              .insert({
+                google_id: token.sub!,
+                email: token.email!,
+                name: token.name || null,
+                avatar_url: token.picture || null,
+                last_active: new Date().toISOString().split('T')[0],
+              })
+              .select('id')
+              .single()
+            if (newUser) token.dbUserId = newUser.id
+          }
+        } catch (err) {
+          console.error('Error upserting user:', err)
+        }
       }
 
       // Return previous token if not expired
@@ -63,6 +102,7 @@ export const authOptions: NextAuthOptions = {
     async session({ session, token }) {
       session.accessToken = token.accessToken as string
       session.userId = token.userId as string
+      session.dbUserId = token.dbUserId as string
       session.error = token.error as string | undefined
       return session
     },
@@ -80,6 +120,7 @@ declare module 'next-auth' {
   interface Session {
     accessToken: string
     userId: string
+    dbUserId: string
     error?: string
   }
 }
@@ -90,6 +131,7 @@ declare module 'next-auth/jwt' {
     refreshToken?: string
     expiresAt?: number
     userId?: string
+    dbUserId?: string
     error?: string
   }
 }

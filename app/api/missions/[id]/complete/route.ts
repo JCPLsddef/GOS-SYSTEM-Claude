@@ -1,103 +1,93 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
-import { kvGet, kvSet } from '@/lib/kv'
-import type { Mission, BattleFront } from '@/types/gos'
+import { supabaseAdmin } from '@/lib/supabase'
 
 export async function POST(
   _request: NextRequest,
   { params }: { params: { id: string } }
 ) {
   const session = await getServerSession(authOptions)
-  if (!session?.userId) {
+  if (!session?.dbUserId) {
     return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 })
   }
 
-  const userId = session.userId
-  const missions = await kvGet<Mission[]>(`user:${userId}:missions`) || []
-  const index = missions.findIndex(m => m.id === params.id)
+  const userId = session.dbUserId
 
-  if (index === -1) {
+  // Get the mission
+  const { data: mission } = await supabaseAdmin
+    .from('missions')
+    .select('*')
+    .eq('id', params.id)
+    .eq('user_id', userId)
+    .single()
+
+  if (!mission) {
     return NextResponse.json({ success: false, error: 'Mission not found' }, { status: 404 })
   }
 
-  if (missions[index].completed) {
+  if (mission.completed) {
     return NextResponse.json({ success: false, error: 'Mission already completed' }, { status: 400 })
   }
 
-  // Check dependencies
-  const unmetDeps = missions[index].dependencies.filter(depId => {
-    const dep = missions.find(m => m.id === depId)
-    return !dep?.completed
-  })
-
-  if (unmetDeps.length > 0) {
-    return NextResponse.json({
-      success: false,
-      error: 'Dependencies not met',
-      data: { unmetDependencies: unmetDeps },
-    }, { status: 400 })
-  }
-
   // Complete the mission
-  missions[index].completed = true
-  missions[index].completedAt = new Date().toISOString()
-  await kvSet(`user:${userId}:missions`, missions)
+  const now = new Date().toISOString()
+  await supabaseAdmin
+    .from('missions')
+    .update({ completed: true, completed_at: now })
+    .eq('id', params.id)
 
-  // Update fronts (checkpoint + target progress)
-  const fronts = await kvGet<BattleFront[]>(`user:${userId}:fronts`) || []
-  const front = fronts.find(f => f.id === missions[index].frontId)
+  // Check if checkpoint is now complete
   let checkpointCompleted = false
+  if (mission.checkpoint_id) {
+    // Check all missions in this checkpoint (including the one we just completed)
+    const { data: cpMissionsUpdated } = await supabaseAdmin
+      .from('missions')
+      .select('completed')
+      .eq('checkpoint_id', mission.checkpoint_id)
+      .eq('user_id', userId)
+
+    if (cpMissionsUpdated && cpMissionsUpdated.length > 0 && cpMissionsUpdated.every(m => m.completed)) {
+      checkpointCompleted = true
+      await supabaseAdmin
+        .from('checkpoints')
+        .update({ completed: true, completed_at: now })
+        .eq('id', mission.checkpoint_id)
+    }
+  }
+
+  // Check if target is achieved (all checkpoints for this front complete)
   let targetAchieved = false
+  if (mission.front_id) {
+    const { data: frontCheckpoints } = await supabaseAdmin
+      .from('checkpoints')
+      .select('completed')
+      .eq('front_id', mission.front_id)
+      .eq('user_id', userId)
 
-  if (front) {
-    const checkpoint = front.checkpoints.find(cp => cp.id === missions[index].checkpointId)
-    if (checkpoint) {
-      const cpMissionIndex = checkpoint.missions.findIndex(m => m.id === params.id)
-      if (cpMissionIndex >= 0) {
-        checkpoint.missions[cpMissionIndex] = missions[index]
-      }
-
-      // Check checkpoint completion
-      if (checkpoint.missions.length > 0 && checkpoint.missions.every(m => m.completed)) {
-        checkpoint.completed = true
-        checkpoint.completedAt = new Date().toISOString()
-        checkpointCompleted = true
-      }
-    }
-
-    // Check target achievement
-    if (front.checkpoints.length > 0 && front.checkpoints.every(cp => cp.completed)) {
-      front.target.achieved = true
-      front.target.achievedAt = new Date().toISOString()
+    if (frontCheckpoints && frontCheckpoints.length > 0 && frontCheckpoints.every(cp => cp.completed)) {
       targetAchieved = true
+      await supabaseAdmin
+        .from('fronts')
+        .update({ target_achieved: true })
+        .eq('id', mission.front_id)
     }
-
-    front.updatedAt = new Date().toISOString()
-    await kvSet(`user:${userId}:fronts`, fronts)
   }
 
-  // Update streak
-  const completionDates = missions
-    .filter(m => m.completedAt)
-    .map(m => m.completedAt!)
-  completionDates.push(missions[index].completedAt!)
-
-  // Simple streak: count consecutive days with completions
+  // Update user streak
   const today = new Date().toISOString().split('T')[0]
-  const existingDates = await kvGet<string[]>(`user:${userId}:completionDates`) || []
-  if (!existingDates.includes(today)) {
-    existingDates.push(today)
-    await kvSet(`user:${userId}:completionDates`, existingDates)
-  }
+  await supabaseAdmin
+    .from('users')
+    .update({ last_active: today })
+    .eq('id', userId)
 
   return NextResponse.json({
     success: true,
     data: {
-      mission: missions[index],
+      mission: { ...mission, completed: true, completed_at: now },
       checkpointCompleted,
       targetAchieved,
-      avatarPosition: missions[index].stonePosition,
+      avatarPosition: mission.stone_position,
     },
   })
 }

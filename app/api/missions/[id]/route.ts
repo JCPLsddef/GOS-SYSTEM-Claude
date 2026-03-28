@@ -1,26 +1,49 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
-import { kvGet, kvSet } from '@/lib/kv'
-import type { Mission, BattleFront } from '@/types/gos'
+import { supabaseAdmin } from '@/lib/supabase'
+
+function mapMission(m: Record<string, unknown>) {
+  return {
+    id: m.id as string,
+    frontId: m.front_id as string,
+    checkpointId: m.checkpoint_id as string,
+    name: m.name as string,
+    definitionOfDone: (m.definition_of_done || '') as string,
+    priority: (m.priority || 2) as number,
+    energyDemand: (m.energy_demand || 'medium') as string,
+    estimatedMinutes: (m.estimated_minutes || 60) as number,
+    attackDate: m.attack_date as string,
+    dueDate: (m.due_date || undefined) as string | undefined,
+    completed: (m.completed || false) as boolean,
+    completedAt: (m.completed_at || undefined) as string | undefined,
+    googleCalendarEventId: (m.gcal_event_id || undefined) as string | undefined,
+    stonePosition: (m.stone_position || 0) as number,
+    dependencies: [] as string[],
+  }
+}
 
 export async function GET(
   _request: NextRequest,
   { params }: { params: { id: string } }
 ) {
   const session = await getServerSession(authOptions)
-  if (!session?.userId) {
+  if (!session?.dbUserId) {
     return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 })
   }
 
-  const missions = await kvGet<Mission[]>(`user:${session.userId}:missions`) || []
-  const mission = missions.find(m => m.id === params.id)
+  const { data: mission } = await supabaseAdmin
+    .from('missions')
+    .select('*')
+    .eq('id', params.id)
+    .eq('user_id', session.dbUserId)
+    .single()
 
   if (!mission) {
     return NextResponse.json({ success: false, error: 'Mission not found' }, { status: 404 })
   }
 
-  return NextResponse.json({ success: true, data: mission })
+  return NextResponse.json({ success: true, data: mapMission(mission) })
 }
 
 export async function PATCH(
@@ -28,33 +51,43 @@ export async function PATCH(
   { params }: { params: { id: string } }
 ) {
   const session = await getServerSession(authOptions)
-  if (!session?.userId) {
+  if (!session?.dbUserId) {
     return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 })
   }
 
   const body = await request.json()
-  const missions = await kvGet<Mission[]>(`user:${session.userId}:missions`) || []
-  const index = missions.findIndex(m => m.id === params.id)
 
-  if (index === -1) {
+  const updateData: Record<string, unknown> = {}
+  if (body.name !== undefined) updateData.name = body.name
+  if (body.definitionOfDone !== undefined) updateData.definition_of_done = body.definitionOfDone
+  if (body.priority !== undefined) updateData.priority = body.priority
+  if (body.energyDemand !== undefined) updateData.energy_demand = body.energyDemand
+  if (body.estimatedMinutes !== undefined) updateData.estimated_minutes = body.estimatedMinutes
+  if (body.attackDate !== undefined) updateData.attack_date = body.attackDate
+  if (body.dueDate !== undefined) updateData.due_date = body.dueDate
+  if (body.stonePosition !== undefined) updateData.stone_position = body.stonePosition
+  if (body.googleCalendarEventId !== undefined) updateData.gcal_event_id = body.googleCalendarEventId
+
+  if (body.completed !== undefined) {
+    updateData.completed = body.completed
+    if (body.completed) {
+      updateData.completed_at = new Date().toISOString()
+    }
+  }
+
+  const { data: updated, error } = await supabaseAdmin
+    .from('missions')
+    .update(updateData)
+    .eq('id', params.id)
+    .eq('user_id', session.dbUserId)
+    .select()
+    .single()
+
+  if (error || !updated) {
     return NextResponse.json({ success: false, error: 'Mission not found' }, { status: 404 })
   }
 
-  // Update mission fields
-  const updated: Mission = { ...missions[index], ...body }
-
-  // If completing, set completedAt
-  if (body.completed && !missions[index].completed) {
-    updated.completedAt = new Date().toISOString()
-  }
-
-  missions[index] = updated
-  await kvSet(`user:${session.userId}:missions`, missions)
-
-  // Sync to fronts
-  await syncMissionToFronts(session.userId, updated)
-
-  return NextResponse.json({ success: true, data: updated })
+  return NextResponse.json({ success: true, data: mapMission(updated) })
 }
 
 export async function DELETE(
@@ -62,58 +95,19 @@ export async function DELETE(
   { params }: { params: { id: string } }
 ) {
   const session = await getServerSession(authOptions)
-  if (!session?.userId) {
+  if (!session?.dbUserId) {
     return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 })
   }
 
-  const missions = await kvGet<Mission[]>(`user:${session.userId}:missions`) || []
-  const filtered = missions.filter(m => m.id !== params.id)
+  const { error } = await supabaseAdmin
+    .from('missions')
+    .delete()
+    .eq('id', params.id)
+    .eq('user_id', session.dbUserId)
 
-  if (filtered.length === missions.length) {
+  if (error) {
     return NextResponse.json({ success: false, error: 'Mission not found' }, { status: 404 })
   }
 
-  await kvSet(`user:${session.userId}:missions`, filtered)
-
-  // Also remove from fronts
-  const fronts = await kvGet<BattleFront[]>(`user:${session.userId}:fronts`) || []
-  for (const front of fronts) {
-    for (const cp of front.checkpoints) {
-      cp.missions = cp.missions.filter(m => m.id !== params.id)
-    }
-  }
-  await kvSet(`user:${session.userId}:fronts`, fronts)
-
   return NextResponse.json({ success: true })
-}
-
-async function syncMissionToFronts(userId: string, mission: Mission) {
-  const fronts = await kvGet<BattleFront[]>(`user:${userId}:fronts`) || []
-  const front = fronts.find(f => f.id === mission.frontId)
-  if (!front) return
-
-  const checkpoint = front.checkpoints.find(cp => cp.id === mission.checkpointId)
-  if (!checkpoint) return
-
-  const mIndex = checkpoint.missions.findIndex(m => m.id === mission.id)
-  if (mIndex >= 0) {
-    checkpoint.missions[mIndex] = mission
-  }
-
-  // Check if checkpoint is now complete
-  const allDone = checkpoint.missions.every(m => m.completed)
-  if (allDone && checkpoint.missions.length > 0) {
-    checkpoint.completed = true
-    checkpoint.completedAt = new Date().toISOString()
-  }
-
-  // Check if target is achieved (all checkpoints complete)
-  const allCheckpointsDone = front.checkpoints.every(cp => cp.completed)
-  if (allCheckpointsDone && front.checkpoints.length > 0) {
-    front.target.achieved = true
-    front.target.achievedAt = new Date().toISOString()
-  }
-
-  front.updatedAt = new Date().toISOString()
-  await kvSet(`user:${userId}:fronts`, fronts)
 }

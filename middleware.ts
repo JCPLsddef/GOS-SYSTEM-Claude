@@ -13,10 +13,12 @@ export const config = {
     '/calendar/:path*',
     '/fronts/:path*',
     '/notifications/:path*',
+    '/settings/:path*',
     '/api/missions/:path*',
     '/api/fronts/:path*',
     '/api/calendar/:path*',
     '/api/notifications/:path*',
+    '/api/mantras/:path*',
     '/api/seed/:path*',
   ],
 }

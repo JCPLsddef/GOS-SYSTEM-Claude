@@ -1,34 +1,55 @@
 import { NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
-import { kvGet, kvSet } from '@/lib/kv'
+import { supabaseAdmin } from '@/lib/supabase'
 import { syncMissionsToCalendar } from '@/lib/google-calendar'
-import type { Mission } from '@/types/gos'
 
 export async function POST() {
   const session = await getServerSession(authOptions)
-  if (!session?.accessToken || !session?.userId) {
+  if (!session?.accessToken || !session?.dbUserId) {
     return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 })
   }
 
-  const missions = await kvGet<Mission[]>(`user:${session.userId}:missions`) || []
+  const { data: missions } = await supabaseAdmin
+    .from('missions')
+    .select('*')
+    .eq('user_id', session.dbUserId)
+    .eq('completed', false)
 
-  // Only sync missions with attack dates that aren't completed
-  const toSync = missions.filter(m => m.attackDate && !m.completed)
+  if (!missions || missions.length === 0) {
+    return NextResponse.json({ success: true, data: { created: 0, updated: 0, syncedAt: new Date().toISOString() } })
+  }
+
+  // Map to the format google-calendar expects
+  const toSync = missions.map(m => ({
+    id: m.id,
+    frontId: m.front_id,
+    checkpointId: m.checkpoint_id,
+    name: m.name,
+    definitionOfDone: m.definition_of_done || '',
+    priority: m.priority,
+    energyDemand: m.energy_demand,
+    estimatedMinutes: m.estimated_minutes,
+    attackDate: m.attack_date,
+    dueDate: m.due_date,
+    completed: m.completed,
+    stonePosition: m.stone_position,
+    dependencies: [],
+    googleCalendarEventId: m.gcal_event_id,
+  }))
 
   try {
     const result = await syncMissionsToCalendar(session.accessToken, toSync)
 
-    // Save updated missions (with new googleCalendarEventIds)
-    // Merge synced missions back
+    // Update missions with calendar event IDs
     for (const synced of toSync) {
-      const idx = missions.findIndex(m => m.id === synced.id)
-      if (idx >= 0) {
-        missions[idx] = synced
+      if (synced.googleCalendarEventId) {
+        await supabaseAdmin
+          .from('missions')
+          .update({ gcal_event_id: synced.googleCalendarEventId })
+          .eq('id', synced.id)
       }
     }
-    await kvSet(`user:${session.userId}:missions`, missions)
-    await kvSet(`user:${session.userId}:lastSyncedAt`, new Date().toISOString())
 
     return NextResponse.json({
       success: true,

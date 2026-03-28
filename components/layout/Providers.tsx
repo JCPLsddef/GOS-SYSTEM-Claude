@@ -13,8 +13,6 @@ function DataLoader({ children }: { children: React.ReactNode }) {
     if (status !== 'authenticated' || initialized.current) return
     initialized.current = true
 
-    // Use getState() to avoid subscribing DataLoader to the entire store
-    // seedData() seeds if fresh, then fetchAll() ensures data is always loaded
     const { seedData, fetchAll } = useGosStore.getState()
     seedData().then(() => {
       fetchAll()
