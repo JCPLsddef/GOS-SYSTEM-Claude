@@ -30,6 +30,35 @@ export async function GET() {
   return NextResponse.json({ success: true, data: (data || []).map(mapRule) })
 }
 
+export async function POST(request: NextRequest) {
+  const session = await getServerSession(authOptions)
+  if (!session?.dbUserId) {
+    return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 })
+  }
+
+  const body = await request.json()
+  const { type, message, trigger_time, recurring } = body
+
+  const { data, error } = await supabaseAdmin
+    .from('notification_rules')
+    .insert({
+      user_id: session.dbUserId,
+      type,
+      message,
+      trigger_time,
+      recurring,
+      active: true,
+    })
+    .select()
+    .single()
+
+  if (error) {
+    return NextResponse.json({ success: false, error: error.message }, { status: 500 })
+  }
+
+  return NextResponse.json({ success: true, data: mapRule(data) }, { status: 201 })
+}
+
 export async function PATCH(request: NextRequest) {
   const session = await getServerSession(authOptions)
   if (!session?.dbUserId) {

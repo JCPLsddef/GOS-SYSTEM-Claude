@@ -113,3 +113,21 @@ body {
 .animate-complete-pulse {
   animation: complete-pulse 0.6s ease-out;
 }
+
+/* Electric flow animation for map center line */
+.electric-flow {
+  background: linear-gradient(180deg,
+    transparent 0%,
+    rgba(147, 210, 255, 0.6) 45%,
+    rgba(255, 255, 255, 0.8) 50%,
+    rgba(147, 210, 255, 0.6) 55%,
+    transparent 100%
+  );
+  background-size: 100% 200%;
+  animation: electricFlowDown 2s linear infinite;
+}
+
+@keyframes electricFlowDown {
+  0% { background-position: 0 -100%; }
+  100% { background-position: 0 200%; }
+}

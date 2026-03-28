@@ -3,7 +3,6 @@
 import { useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { X } from 'lucide-react'
-import { cn } from '@/lib/utils'
 
 interface ModalProps {
   open: boolean
@@ -31,13 +30,13 @@ export function Modal({ open, onClose, title, children, className }: ModalProps)
   return (
     <AnimatePresence>
       {open && (
-        <>
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-5">
           {/* Backdrop */}
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm"
+            className="absolute inset-0 bg-black/80 backdrop-blur-sm"
             onClick={onClose}
           />
 
@@ -47,15 +46,17 @@ export function Modal({ open, onClose, title, children, className }: ModalProps)
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.95, y: 10 }}
             transition={{ duration: 0.2 }}
-            className={cn(
-              'fixed left-1/2 top-1/2 z-50 -translate-x-1/2 -translate-y-1/2 w-full max-w-lg bg-bg-surface border border-cream-muted/10 rounded-xl shadow-2xl',
-              className
-            )}
+            className={`relative w-full max-w-[540px] max-h-[90vh] overflow-y-auto rounded-2xl ${className || ''}`}
+            style={{
+              background: '#111109',
+              border: '1px solid rgba(212, 168, 83, 0.2)',
+              padding: '32px',
+            }}
           >
             {/* Header */}
             {title && (
-              <div className="flex items-center justify-between px-6 py-4 border-b border-cream-muted/10">
-                <h2 className="font-display text-lg font-semibold text-cream">{title}</h2>
+              <div className="flex items-center justify-between mb-6">
+                <h2 className="gos-title font-display text-lg font-bold text-gold">{title}</h2>
                 <button
                   onClick={onClose}
                   className="text-cream-muted hover:text-cream transition-colors"
@@ -66,9 +67,9 @@ export function Modal({ open, onClose, title, children, className }: ModalProps)
             )}
 
             {/* Body */}
-            <div className="px-6 py-4">{children}</div>
+            {children}
           </motion.div>
-        </>
+        </div>
       )}
     </AnimatePresence>
   )

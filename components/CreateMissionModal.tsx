@@ -9,14 +9,15 @@ import { toast } from '@/components/ui/Toast'
 interface CreateMissionModalProps {
   open: boolean
   onClose: () => void
+  defaultFrontId?: string
 }
 
-export function CreateMissionModal({ open, onClose }: CreateMissionModalProps) {
+export function CreateMissionModal({ open, onClose, defaultFrontId }: CreateMissionModalProps) {
   const { fronts, createMission } = useGosStore()
   const [saving, setSaving] = useState(false)
 
   const [name, setName] = useState('')
-  const [frontId, setFrontId] = useState('')
+  const [frontId, setFrontId] = useState(defaultFrontId || '')
   const [checkpointId, setCheckpointId] = useState('')
   const [definitionOfDone, setDefinitionOfDone] = useState('')
   const [priority, setPriority] = useState(2)

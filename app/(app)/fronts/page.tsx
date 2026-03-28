@@ -1,12 +1,13 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useGosStore } from '@/store/gos-store'
 import type { BattleFront, Checkpoint, Mission } from '@/types/gos'
 import { Card } from '@/components/ui/Card'
 import { FrontBadge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 import { ProgressRing } from '@/components/ui/ProgressRing'
+import { Modal } from '@/components/ui/Modal'
 import { CreateMissionModal } from '@/components/CreateMissionModal'
 import { toast } from '@/components/ui/Toast'
 import { motion, AnimatePresence } from 'framer-motion'
@@ -15,9 +16,27 @@ import {
   Target, Clock, Plus,
 } from 'lucide-react'
 
+const COLOR_PRESETS = ['#4CAF7D', '#4A90D9', '#E8973A', '#D4A853', '#E05A5A', '#9B59B6']
+const ICON_PRESETS = ['⚡', '📚', '🥊', '💰', '🏠', '🎯']
+const TYPE_OPTIONS = ['business', 'school', 'health', 'family', 'finance', 'custom']
+
 export default function FrontsPage() {
-  const { fronts, missions, completeMission, updateFront, getFrontProgress } = useGosStore()
+  const { fronts, missions, completeMission, updateFront, getFrontProgress, seedData, isLoading } = useGosStore()
+  const [showCreateFront, setShowCreateFront] = useState(false)
   const [showCreateMission, setShowCreateMission] = useState(false)
+  const [preselectedFrontId, setPreselectedFrontId] = useState('')
+
+  // Auto-seed if no fronts
+  useEffect(() => {
+    if (!isLoading && fronts.length === 0) {
+      seedData()
+    }
+  }, [isLoading, fronts.length, seedData])
+
+  function openMissionModalForFront(frontId: string) {
+    setPreselectedFrontId(frontId)
+    setShowCreateMission(true)
+  }
 
   return (
     <div className="max-w-6xl mx-auto space-y-6">
@@ -26,8 +45,8 @@ export default function FrontsPage() {
           <h1 className="gos-title font-display text-2xl font-bold text-gold">BATTLE FRONTS</h1>
           <p className="text-sm text-cream-muted mt-1">Your active theaters of war</p>
         </div>
-        <Button variant="primary" onClick={() => setShowCreateMission(true)}>
-          <Plus className="w-4 h-4" /> ADD MISSION
+        <Button variant="primary" onClick={() => setShowCreateFront(true)}>
+          <Plus className="w-4 h-4" /> ADD BATTLE FRONT
         </Button>
       </div>
 
@@ -39,6 +58,7 @@ export default function FrontsPage() {
             missions={missions.filter(m => m.frontId === front.id)}
             progress={getFrontProgress(front.id)}
             onComplete={completeMission}
+            onAddMission={() => openMissionModalForFront(front.id)}
             onToggleTarget={async () => {
               await updateFront(front.id, {
                 target: { ...front.target, achieved: !front.target.achieved },
@@ -51,30 +71,115 @@ export default function FrontsPage() {
         ))}
       </div>
 
-      {fronts.length === 0 && (
+      {fronts.length === 0 && !isLoading && (
         <Card className="text-center py-12">
-          <p className="text-cream-muted text-lg mb-2">No battle fronts yet.</p>
-          <p className="text-sm text-cream-muted/60">Data will load automatically on first login.</p>
+          <p className="text-cream-muted text-lg mb-2">Loading fronts...</p>
         </Card>
       )}
 
-      <CreateMissionModal open={showCreateMission} onClose={() => setShowCreateMission(false)} />
+      <CreateFrontModal open={showCreateFront} onClose={() => setShowCreateFront(false)} />
+      <CreateMissionModal
+        open={showCreateMission}
+        onClose={() => { setShowCreateMission(false); setPreselectedFrontId('') }}
+        defaultFrontId={preselectedFrontId}
+      />
     </div>
   )
 }
 
+// ── Create Front Modal ──
+function CreateFrontModal({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const [name, setName] = useState('')
+  const [type, setType] = useState('business')
+  const [color, setColor] = useState('#4CAF7D')
+  const [icon, setIcon] = useState('⚡')
+  const [targetText, setTargetText] = useState('')
+  const [deadline, setDeadline] = useState('')
+  const [saving, setSaving] = useState(false)
+
+  async function handleSave() {
+    if (!name.trim() || !targetText.trim()) {
+      toast('Name and target are required.', 'error')
+      return
+    }
+    setSaving(true)
+    try {
+      const res = await fetch('/api/fronts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: name.trim(), type, color, icon, targetDescription: targetText.trim(), targetDeadline: deadline || null }),
+      })
+      const json = await res.json()
+      if (json.success) {
+        toast('New front opened.', 'info')
+        useGosStore.getState().fetchFronts()
+        setName(''); setType('business'); setColor('#4CAF7D'); setIcon('⚡'); setTargetText(''); setDeadline('')
+        onClose()
+      } else {
+        toast(json.error || 'Failed to create front.', 'error')
+      }
+    } catch {
+      toast('Failed to create front.', 'error')
+    }
+    setSaving(false)
+  }
+
+  const inputClass = 'w-full bg-bg-base border border-cream-muted/20 rounded-lg px-3 py-2 text-sm text-cream placeholder-cream-muted/40 focus:border-gold/50 focus:outline-none'
+  const labelClass = 'text-xs text-cream-muted uppercase tracking-wider mb-1 block font-mono'
+
+  return (
+    <Modal open={open} onClose={onClose} title="New Battle Front">
+      <div className="space-y-4">
+        <div>
+          <label className={labelClass}>Front name *</label>
+          <input type="text" value={name} onChange={e => setName(e.target.value)} placeholder="e.g. Business" className={inputClass} />
+        </div>
+        <div>
+          <label className={labelClass}>Type</label>
+          <select value={type} onChange={e => setType(e.target.value)} className={inputClass}>
+            {TYPE_OPTIONS.map(t => <option key={t} value={t}>{t.charAt(0).toUpperCase() + t.slice(1)}</option>)}
+          </select>
+        </div>
+        <div>
+          <label className={labelClass}>Color</label>
+          <div className="flex gap-2">
+            {COLOR_PRESETS.map(c => (
+              <button key={c} onClick={() => setColor(c)} className={`w-8 h-8 rounded-lg border-2 transition-all ${color === c ? 'border-cream scale-110' : 'border-transparent'}`} style={{ backgroundColor: c }} />
+            ))}
+          </div>
+        </div>
+        <div>
+          <label className={labelClass}>Icon</label>
+          <div className="flex gap-2">
+            {ICON_PRESETS.map(i => (
+              <button key={i} onClick={() => setIcon(i)} className={`w-10 h-10 rounded-lg text-xl flex items-center justify-center transition-all border ${icon === i ? 'border-gold bg-gold/10' : 'border-cream-muted/20 hover:border-cream-muted/40'}`}>{i}</button>
+            ))}
+          </div>
+        </div>
+        <div>
+          <label className={labelClass}>Binary target — what does winning look like? *</label>
+          <textarea value={targetText} onChange={e => setTargetText(e.target.value)} placeholder="e.g. 2 new clients signed" rows={2} className={inputClass + ' resize-none'} />
+        </div>
+        <div>
+          <label className={labelClass}>Target deadline</label>
+          <input type="date" value={deadline} onChange={e => setDeadline(e.target.value)} className={inputClass} />
+        </div>
+      </div>
+      <div className="flex justify-end gap-3 mt-6 pt-4 border-t border-cream-muted/10">
+        <Button variant="secondary" onClick={onClose}>Cancel</Button>
+        <Button variant="primary" loading={saving} onClick={handleSave}>CREATE FRONT</Button>
+      </div>
+    </Modal>
+  )
+}
+
+// ── Front Card ──
 function FrontCard({
-  front,
-  missions,
-  progress,
-  onComplete,
-  onToggleTarget,
+  front, missions, progress, onComplete, onToggleTarget, onAddMission,
 }: {
-  front: BattleFront
-  missions: Mission[]
-  progress: number
+  front: BattleFront; missions: Mission[]; progress: number
   onComplete: (id: string) => Promise<{ checkpointCompleted: boolean; targetAchieved: boolean; xpGained: number } | null>
-  onToggleTarget: () => void
+  onToggleTarget: () => void; onAddMission: () => void
 }) {
   const [expandedCheckpoint, setExpandedCheckpoint] = useState<string | null>(null)
   const [completing, setCompleting] = useState<string | null>(null)
@@ -83,27 +188,19 @@ function FrontCard({
     setCompleting(missionId)
     const result = await onComplete(missionId)
     setCompleting(null)
-    if (result) {
-      toast(`+${result.xpGained} XP`, 'success')
-    }
+    if (result) toast(`+${result.xpGained} XP`, 'success')
   }
 
   const deadline = front.target.deadline ? new Date(front.target.deadline) : null
   const daysLeft = deadline ? Math.ceil((deadline.getTime() - Date.now()) / 86400000) : null
 
   return (
-    <Card
-      className="flex flex-col"
-      style={{ borderTop: `3px solid ${front.color}` }}
-    >
-      {/* Header */}
+    <Card className="flex flex-col" style={{ borderTop: `3px solid ${front.color}` }}>
       <div className="flex items-start justify-between mb-4">
         <div className="flex items-center gap-3">
           <span className="text-2xl">{front.icon}</span>
           <div>
-            <h2 className="font-display text-lg font-bold text-cream uppercase tracking-wider">
-              {front.name}
-            </h2>
+            <h2 className="font-display text-lg font-bold text-cream uppercase tracking-wider">{front.name}</h2>
             <FrontBadge name={front.type} color={front.color} />
           </div>
         </div>
@@ -112,7 +209,6 @@ function FrontCard({
         </ProgressRing>
       </div>
 
-      {/* Binary Target */}
       <div className="bg-bg-elevated rounded-lg p-3 mb-4">
         <div className="flex items-center gap-2 mb-1">
           <Target className="w-4 h-4 text-gold" />
@@ -121,90 +217,43 @@ function FrontCard({
         <p className="text-sm text-cream font-semibold mb-2">{front.target.description}</p>
         <div className="flex items-center justify-between">
           {daysLeft !== null && (
-            <span className="text-xs font-mono text-cream-muted">
-              {daysLeft > 0 ? `${daysLeft} days remaining` : 'Deadline passed'}
-            </span>
+            <span className="text-xs font-mono text-cream-muted">{daysLeft > 0 ? `${daysLeft} days remaining` : 'Deadline passed'}</span>
           )}
-          <button
-            onClick={onToggleTarget}
-            className={`px-3 py-1 rounded-md text-xs font-semibold transition-colors ${
-              front.target.achieved
-                ? 'bg-gold/20 text-gold'
-                : 'bg-bg-surface text-cream-muted hover:text-cream'
-            }`}
-          >
+          <button onClick={onToggleTarget} className={`px-3 py-1 rounded-md text-xs font-semibold transition-colors ${front.target.achieved ? 'bg-gold/20 text-gold' : 'bg-bg-surface text-cream-muted hover:text-cream'}`}>
             {front.target.achieved ? '✓ Achieved' : 'Mark Achieved'}
           </button>
         </div>
       </div>
 
-      {/* Checkpoints */}
       <div className="space-y-1 flex-1">
         <p className="text-[10px] text-cream-muted uppercase tracking-wider mb-2 font-mono">Checkpoints</p>
         {front.checkpoints.map((cp: Checkpoint) => {
           const isExpanded = expandedCheckpoint === cp.id
           const cpMissions = missions.filter(m => m.checkpointId === cp.id)
           const cpDone = cpMissions.filter(m => m.completed).length
-          const cpTotal = cpMissions.length
-
           return (
             <div key={cp.id}>
-              <button
-                onClick={() => setExpandedCheckpoint(isExpanded ? null : cp.id)}
-                className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-left hover:bg-bg-elevated transition-colors"
-              >
-                {cp.completed ? (
-                  <CheckCircle2 className="w-4 h-4 text-gold flex-shrink-0" />
-                ) : (
-                  <Circle className="w-4 h-4 text-cream-muted/40 flex-shrink-0" />
-                )}
-                <span className={`text-xs flex-1 ${cp.completed ? 'text-cream-muted line-through' : 'text-cream'}`}>
-                  {cp.name}
-                </span>
-                <span className="text-[10px] font-mono text-cream-muted">
-                  {cpDone}/{cpTotal}
-                </span>
-                {isExpanded ? (
-                  <ChevronDown className="w-3 h-3 text-cream-muted" />
-                ) : (
-                  <ChevronRight className="w-3 h-3 text-cream-muted" />
-                )}
+              <button onClick={() => setExpandedCheckpoint(isExpanded ? null : cp.id)} className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-left hover:bg-bg-elevated transition-colors">
+                {cp.completed ? <CheckCircle2 className="w-4 h-4 text-gold flex-shrink-0" /> : <Circle className="w-4 h-4 text-cream-muted/40 flex-shrink-0" />}
+                <span className={`text-xs flex-1 ${cp.completed ? 'text-cream-muted line-through' : 'text-cream'}`}>{cp.name}</span>
+                <span className="text-[10px] font-mono text-cream-muted">{cpDone}/{cpMissions.length}</span>
+                {isExpanded ? <ChevronDown className="w-3 h-3 text-cream-muted" /> : <ChevronRight className="w-3 h-3 text-cream-muted" />}
               </button>
-
               <AnimatePresence>
                 {isExpanded && (
-                  <motion.div
-                    initial={{ height: 0, opacity: 0 }}
-                    animate={{ height: 'auto', opacity: 1 }}
-                    exit={{ height: 0, opacity: 0 }}
-                    className="overflow-hidden"
-                  >
+                  <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden">
                     <div className="pl-9 pr-3 pb-2 space-y-1">
                       {cpMissions.map((mission: Mission) => (
                         <div key={mission.id} className="flex items-center gap-2 py-1.5">
-                          <button
-                            onClick={() => !mission.completed && handleComplete(mission.id)}
-                            disabled={mission.completed || completing === mission.id}
-                            className={`w-5 h-5 rounded-full border flex items-center justify-center flex-shrink-0 transition-colors ${
-                              mission.completed
-                                ? 'bg-gold border-gold'
-                                : 'border-cream-muted/30 hover:border-gold'
-                            }`}
-                          >
+                          <button onClick={() => !mission.completed && handleComplete(mission.id)} disabled={mission.completed || completing === mission.id} className={`w-5 h-5 rounded-full border flex items-center justify-center flex-shrink-0 transition-colors ${mission.completed ? 'bg-gold border-gold' : 'border-cream-muted/30 hover:border-gold'}`}>
                             {mission.completed && <CheckCircle2 className="w-3 h-3 text-bg-base" />}
                             {completing === mission.id && <div className="w-2 h-2 rounded-full bg-gold animate-pulse" />}
                           </button>
-                          <span className={`text-xs flex-1 ${mission.completed ? 'text-cream-muted line-through' : 'text-cream'}`}>
-                            {mission.name}
-                          </span>
-                          <span className="text-[10px] font-mono text-cream-muted flex items-center gap-1">
-                            <Clock className="w-3 h-3" />{mission.estimatedMinutes}m
-                          </span>
+                          <span className={`text-xs flex-1 ${mission.completed ? 'text-cream-muted line-through' : 'text-cream'}`}>{mission.name}</span>
+                          <span className="text-[10px] font-mono text-cream-muted flex items-center gap-1"><Clock className="w-3 h-3" />{mission.estimatedMinutes}m</span>
                         </div>
                       ))}
-                      {cpMissions.length === 0 && (
-                        <p className="text-xs text-cream-muted/40 italic py-1">No missions yet</p>
-                      )}
+                      {cpMissions.length === 0 && <p className="text-xs text-cream-muted/40 italic py-1">No missions yet</p>}
                     </div>
                   </motion.div>
                 )}
@@ -213,6 +262,10 @@ function FrontCard({
           )
         })}
       </div>
+
+      <button onClick={onAddMission} className="mt-4 w-full py-2 rounded-lg border border-dashed border-cream-muted/20 text-xs text-cream-muted hover:text-gold hover:border-gold/40 transition-colors flex items-center justify-center gap-1.5">
+        <Plus className="w-3 h-3" /> ADD MISSION
+      </button>
     </Card>
   )
 }

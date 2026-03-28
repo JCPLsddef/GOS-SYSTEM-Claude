@@ -6,8 +6,23 @@ import { syncMissionsToCalendar } from '@/lib/google-calendar'
 
 export async function POST() {
   const session = await getServerSession(authOptions)
-  if (!session?.accessToken || !session?.dbUserId) {
+
+  if (!session?.dbUserId) {
     return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 })
+  }
+
+  if (!session.accessToken) {
+    return NextResponse.json(
+      { success: false, error: 'No Google access token. Please sign out and sign back in.' },
+      { status: 401 }
+    )
+  }
+
+  if (session.error === 'RefreshAccessTokenError') {
+    return NextResponse.json(
+      { success: false, error: 'Google token expired. Please sign out and sign back in.' },
+      { status: 401 }
+    )
   }
 
   const { data: missions } = await supabaseAdmin
@@ -17,11 +32,10 @@ export async function POST() {
     .eq('completed', false)
 
   if (!missions || missions.length === 0) {
-    return NextResponse.json({ success: true, data: { created: 0, updated: 0, syncedAt: new Date().toISOString() } })
+    return NextResponse.json({ success: true, data: { created: 0, updated: 0, synced: 0, syncedAt: new Date().toISOString() } })
   }
 
-  // Map to the format google-calendar expects
-  const toSync = missions.map(m => ({
+  const toSync = missions.filter(m => m.attack_date).map(m => ({
     id: m.id,
     frontId: m.front_id,
     checkpointId: m.checkpoint_id,
@@ -41,7 +55,6 @@ export async function POST() {
   try {
     const result = await syncMissionsToCalendar(session.accessToken, toSync)
 
-    // Update missions with calendar event IDs
     for (const synced of toSync) {
       if (synced.googleCalendarEventId) {
         await supabaseAdmin
@@ -56,13 +69,23 @@ export async function POST() {
       data: {
         created: result.created,
         updated: result.updated,
+        synced: result.created + result.updated,
         syncedAt: new Date().toISOString(),
       },
     })
   } catch (error) {
-    console.error('Calendar sync error:', error)
+    const msg = error instanceof Error ? error.message : 'Unknown error'
+    console.error('Calendar sync error:', msg)
+
+    if (msg.includes('invalid_grant') || msg.includes('Token has been expired')) {
+      return NextResponse.json(
+        { success: false, error: 'Google token expired. Please sign out and sign back in.' },
+        { status: 401 }
+      )
+    }
+
     return NextResponse.json(
-      { success: false, error: 'Failed to sync to Google Calendar' },
+      { success: false, error: `Calendar sync failed: ${msg}` },
       { status: 500 }
     )
   }
